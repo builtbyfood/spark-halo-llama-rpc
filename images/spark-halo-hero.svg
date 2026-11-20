@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="1200" height="600" role="img" aria-label="An HP ZGX Nano stacked on an AMD Ryzen AI Halo, joined by a USB 10GbE adapter and one direct cable" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <!-- spark-halo-hero.svg v1.1.0 (2026-11-20). Original schematic illustration. No vendor logos. 1.1.0: result cards now use the 35B run. -->
+  <defs>
+    <pattern id="vent" width="14" height="11" patternUnits="userSpaceOnUse">
+      <circle cx="7" cy="5.5" r="2.2" fill="#334155"/>
+    </pattern>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2e8f0" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#e2e8f0" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="600" rx="20" fill="#0f172a"/>
+
+  <!-- heading -->
+  <text x="60" y="62" font-size="34" font-weight="700" fill="#f8fafc">Spark + Halo: one cable, two GPUs</text>
+  <text x="60" y="92" font-size="18" fill="#94a3b8">llama.cpp RPC between an NVIDIA GB10 box and an AMD Ryzen AI Halo</text>
+
+  <!-- USB cable: adapter to the Halo -->
+  <path d="M250 190 C 60 190, 50 420, 120 432" fill="none" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"/>
+  <text x="62" y="170" font-size="14" fill="#94a3b8">USB-C to the Halo</text>
+
+  <!-- Ethernet cable: adapter to the Spark-class box -->
+  <path d="M380 190 C 470 190, 600 130, 610 230 S 600 310, 550 310" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round"/>
+  <text x="500" y="128" font-size="15" font-weight="600" text-anchor="middle" fill="#34d399">direct 10GbE cable</text>
+
+  <!-- glow under the stack -->
+  <rect x="120" y="496" width="420" height="46" fill="url(#glow)"/>
+  <rect x="128" y="492" width="404" height="7" rx="3" fill="#e2e8f0"/>
+
+  <!-- bottom box: Halo -->
+  <rect x="120" y="380" width="420" height="110" rx="10" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+  <rect x="136" y="462" width="388" height="16" fill="url(#vent)"/>
+  <text x="330" y="424" font-size="20" font-weight="700" text-anchor="middle" fill="#f1f5f9">AMD Ryzen AI Halo · head node</text>
+  <text x="330" y="448" font-size="15" text-anchor="middle" fill="#94a3b8">Windows · Vulkan · 10.10.10.1</text>
+
+  <!-- top box: Spark-class worker -->
+  <rect x="110" y="220" width="440" height="152" rx="12" fill="#111827" stroke="#475569" stroke-width="2"/>
+  <rect x="126" y="334" width="408" height="24" fill="url(#vent)"/>
+  <circle cx="142" cy="246" r="5" fill="#22c55e"/>
+  <text x="330" y="286" font-size="20" font-weight="700" text-anchor="middle" fill="#f1f5f9">HP ZGX Nano · DGX Spark platform</text>
+  <text x="330" y="312" font-size="15" text-anchor="middle" fill="#94a3b8">RPC worker · Linux · CUDA · 10.10.10.2</text>
+
+  <!-- adapter -->
+  <rect x="250" y="162" width="130" height="56" rx="6" fill="#cbd5e1" stroke="#94a3b8" stroke-width="2"/>
+  <g stroke="#64748b" stroke-width="3" stroke-linecap="round">
+    <line x1="266" y1="172" x2="266" y2="192"/>
+    <line x1="278" y1="172" x2="278" y2="192"/>
+    <line x1="290" y1="172" x2="290" y2="192"/>
+    <line x1="302" y1="172" x2="302" y2="192"/>
+    <line x1="314" y1="172" x2="314" y2="192"/>
+    <line x1="326" y1="172" x2="326" y2="192"/>
+    <line x1="338" y1="172" x2="338" y2="192"/>
+    <line x1="350" y1="172" x2="350" y2="192"/>
+  </g>
+  <rect x="364" y="178" width="16" height="24" rx="2" fill="#0f172a"/>
+  <text x="315" y="150" font-size="14" text-anchor="middle" fill="#cbd5e1">USB 10GbE adapter</text>
+
+  <!-- measured results -->
+  <g>
+    <rect x="700" y="160" width="440" height="100" rx="12" fill="#1e293b" stroke="#334155"/>
+    <text x="724" y="224" font-size="40" font-weight="700" fill="#34d399">7.8 Gb/s</text>
+    <text x="930" y="204" font-size="16" fill="#e2e8f0">measured over</text>
+    <text x="930" y="226" font-size="16" fill="#e2e8f0">the direct link</text>
+  </g>
+  <g>
+    <rect x="700" y="276" width="440" height="100" rx="12" fill="#1e293b" stroke="#334155"/>
+    <text x="724" y="340" font-size="40" font-weight="700" fill="#34d399">+29%</text>
+    <text x="930" y="320" font-size="16" fill="#e2e8f0">prompt speed, 35B</text>
+    <text x="930" y="342" font-size="16" fill="#e2e8f0">run on the Spark</text>
+  </g>
+  <g>
+    <rect x="700" y="392" width="440" height="100" rx="12" fill="#1e293b" stroke="#334155"/>
+    <text x="724" y="456" font-size="40" font-weight="700" fill="#34d399">−7%</text>
+    <text x="930" y="436" font-size="16" fill="#e2e8f0">generation speed,</text>
+    <text x="930" y="458" font-size="16" fill="#e2e8f0">35B on the Spark</text>
+  </g>
+
+  <text x="60" y="572" font-size="13" fill="#64748b">Tested 2026-11-20 · llama.cpp b12477 · Qwen3.6-35B-A3B Q8_0, 2,048-token prompt · Not affiliated with or endorsed by AMD, NVIDIA or HP.</text>
+</svg>

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 400" width="1000" height="400" role="img" aria-label="The direct cable carries only RPC and each box reaches the LAN on its other port" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <!-- topology.svg v1.0.0 (2026-11-20). Original diagram. No vendor logos. -->
+  <rect width="1000" height="400" rx="16" fill="#0f172a"/>
+  <text x="40" y="48" font-size="22" font-weight="700" fill="#f8fafc">The direct cable carries only RPC; each box reaches the LAN on its other port</text>
+
+  <!-- LAN drops -->
+  <g stroke="#64748b" stroke-width="2">
+    <line x1="230" y1="270" x2="230" y2="320"/>
+    <line x1="770" y1="270" x2="770" y2="320"/>
+  </g>
+
+  <!-- Halo -->
+  <rect x="40" y="84" width="380" height="186" rx="12" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+  <text x="62" y="118" font-size="19" font-weight="700" fill="#f1f5f9">AMD Ryzen AI Halo: head node</text>
+  <text x="62" y="144" font-size="15" fill="#94a3b8">Windows 11, Vulkan backend</text>
+  <text x="62" y="165" font-size="15" fill="#94a3b8">Holds the models, serves the API</text>
+  <line x1="62" y1="182" x2="398" y2="182" stroke="#334155"/>
+  <text x="62" y="212" font-size="16" fill="#34d399">USB 10GbE adapter: 10.10.10.1</text>
+  <text x="62" y="244" font-size="16" fill="#e2e8f0">Built-in 2.5GbE: LAN</text>
+
+  <!-- Spark -->
+  <rect x="580" y="84" width="380" height="186" rx="12" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+  <text x="602" y="118" font-size="19" font-weight="700" fill="#f1f5f9">HP ZGX Nano (DGX Spark): RPC worker</text>
+  <text x="602" y="144" font-size="15" fill="#94a3b8">Linux aarch64, CUDA backend</text>
+  <text x="602" y="165" font-size="15" fill="#94a3b8">Lends its GPU on port 50052</text>
+  <line x1="602" y1="182" x2="938" y2="182" stroke="#334155"/>
+  <text x="602" y="212" font-size="16" fill="#34d399">Built-in 10GbE: 10.10.10.2</text>
+  <text x="602" y="244" font-size="16" fill="#e2e8f0">USB gigabit adapter: LAN</text>
+
+  <!-- direct link -->
+  <line x1="420" y1="206" x2="580" y2="206" stroke="#34d399" stroke-width="5" stroke-linecap="round"/>
+  <text x="500" y="190" font-size="15" font-weight="600" text-anchor="middle" fill="#34d399">direct Cat6a</text>
+  <text x="500" y="232" font-size="14" text-anchor="middle" fill="#94a3b8">10.10.10.0/30</text>
+  <text x="500" y="252" font-size="14" text-anchor="middle" fill="#94a3b8">about 7.8 Gb/s</text>
+
+  <!-- LAN -->
+  <rect x="40" y="320" width="920" height="48" rx="10" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+  <text x="500" y="350" font-size="16" text-anchor="middle" fill="#e2e8f0">LAN: router and the rest of the network</text>
+</svg>
