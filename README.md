@@ -1,6 +1,6 @@
 # Linking an HP ZGX Nano (NVIDIA DGX Spark platform) and an AMD Ryzen AI Halo for llama.cpp RPC
 
-Version 1.2.3 · tested 2026-11-20
+Version 1.2.4 · tested 2026-11-20
 
 ![An HP ZGX Nano stacked on an AMD Ryzen AI Halo, joined by a USB 10GbE adapter and one direct cable](images/spark-halo-hero.svg)
 
@@ -430,6 +430,7 @@ This layout keeps it safe by construction: the worker binds only to 10.10.10.2, 
 
 - [llama.cpp RPC README](https://github.com/ggml-org/llama.cpp/blob/master/tools/rpc/README.md): build flags, worker options, the security warning.
 - [AMD playbook: Clustering Two Ryzen AI Halos with RPC](https://developer.amd.com/playbooks/clustering-rpc-server/): the Halo-to-Halo ROCm setup.
+- [TechPowerUp: AMD Ryzen AI Halo review, "AMD + NVIDIA"](https://www.techpowerup.com/review/amd-ryzen-ai-max-395-strix-halo-mini-pc/18.html): a Halo and a DGX Spark pooled with llama.cpp (ROCm + CUDA) over a 2.5 Gb LAN to hold a model too big for one box, the case this guide has not tested.
 - [LTT Labs: AMD Ryzen AI Halo cluster](https://lttlabs.com/articles/2026/07/24/amd-ryzen-ai-halo-cluster): cluster vs single node, Vulkan vs ROCm, observed network traffic.
 - [llama-cpp-distributed-benchmarks](https://github.com/kjaiswal/llama-cpp-distributed-benchmarks): DGX Spark with a Mac Studio over 10GbE, the closest earlier mixed-vendor result.
 - [NVIDIA DGX Spark hardware overview](https://docs.nvidia.com/dgx/dgx-spark/hardware.html): rear-panel ports.
