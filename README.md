@@ -1,6 +1,6 @@
 # Linking an HP ZGX Nano (NVIDIA DGX Spark platform) and an AMD Ryzen AI Halo for llama.cpp RPC
 
-Version 1.2.4 · tested 2026-11-20
+Version 1.3.0 · tested 2026-11-20 and 2026-11-21
 
 ![An HP ZGX Nano stacked on an AMD Ryzen AI Halo, joined by a USB 10GbE adapter and one direct cable](images/spark-halo-hero.svg)
 
@@ -248,7 +248,7 @@ Latency depends on how busy the link is. At 5 to 100 pings per second the round 
 
 ## Step 4: Matching llama.cpp builds
 
-The RPC protocol is not versioned, so both ends must be built from the same commit. This setup used build 12477, commit `054a1babf`.
+The RPC protocol carries a version number (both ends print it at startup: `RPC server v10.0.0` for build 12477 and for 12548), but llama.cpp makes no promise of compatibility between commits, so build both ends from the same commit anyway. This setup used build 12477, commit `054a1babf`.
 
 **Halo.** The prebuilt Windows Vulkan build used here already contained `ggml-rpc.dll`, `ggml-rpc-server.exe` and `llama-bench.exe`. Check what you have:
 
@@ -314,7 +314,9 @@ llama-bench.exe -m <model.gguf> --rpc 10.10.10.2:50052 -ngl 99 -p 512,2048 -n 12
 llama-bench.exe -m <model.gguf> --rpc 10.10.10.2:50052 --device RPC0 -ngl 99 -p 512,2048 -n 128 -r 2
 ```
 
-A server takes the same flags, and a one-request test with the 4B model answered correctly. On `llama-server.exe`: add `--rpc 10.10.10.2:50052`, and `--device RPC0` to place the whole model on the Spark.
+A server takes the same flags. On `llama-server.exe`: add `--rpc 10.10.10.2:50052`, and `--device RPC0` to place the whole model on the Spark.
+
+**On the Windows head, add `--load-mode none`** (`-lm none` on `llama-bench`; this build has no `--no-mmap`). With the default memory-mapped load, Windows kept about 24 GiB of the model file in the head's working set even with every layer on the Spark. That left the Halo with 0.1 GiB of free RAM and pushed other programs out of memory. With `--load-mode none` the head held 0.6 GiB, and loading took the same 89 s.
 
 ## Results
 
@@ -354,6 +356,56 @@ The same 35B as a server, one request generating 400 tokens at temperature 0:
 
 Limits of this data: two repetitions per test, and both machines were holding other models in GPU memory while the tests ran (about 36 GB on the Halo and 44 GB on the Spark). The first 35B run through RPC, while the worker was still writing its cache to disk, generated at 39.9 ± 2.9 tokens per second; the table uses the second run.
 
+### Under sustained load
+
+The same 35B, served for 30 minutes at each of 1, 2 and 4 concurrent requests. Each request streams 400 tokens from the fixed netplan prompt at temperature 0. "Spark server" is `llama-server` on the Spark with `--api-key`, called from the Halo. "RPC" is `llama-server` on the Halo with `--rpc` and `--load-mode none`. Method and full numbers are in [RESULTS-untested.md](RESULTS-untested.md); the load client is `scripts/loadgen.py`.
+
+| Layout | Concurrent | Requests | Errors | Per request (tok/s) | Aggregate (tok/s) | Time to first token, median |
+| --- | --- | --- | --- | --- | --- | --- |
+| Spark server | 1 | 262 | 0 | 59.2 | 58.1 | 144 ms |
+| Spark server | 2 | 394 | 0 | 44.9 | 87.4 | 256 ms |
+| Spark server | 4 | 676 | 0 | 38.6 | 150.0 | 352 ms |
+| RPC, all on the Spark | 1 | 225 | 0 | 51.3 | 49.8 | 244 ms |
+| RPC, all on the Spark | 2 | 316 | 0 | 36.2 | 69.9 | 420 ms |
+| RPC, all on the Spark | 4 | 524 | 0 | 30.1 | 115.8 | 519 ms |
+| RPC, split | 1 | 211 | 0 | 47.9 | 46.9 | 204 ms |
+| RPC, split | 2 | 318 | 0 | 36.2 | 70.3 | 361 ms |
+| RPC, split | 4 | 488 | 0 | 28.0 | 107.8 | 546 ms |
+
+- **RPC is stable under load.** There were no errors, stalls or disconnects in 2,082 RPC requests over 3 hours (2,208 counting the 18-minute CPU check that followed), nor in 1,332 requests to the Spark server. The Halo adapter logged no errors or discards.
+- **Serving from the Spark stays ahead, and the gap grows with concurrency.** RPC delivered 13% less than the Spark's own server at one request, 20% less aggregate at two, and 23% less at four.
+- **No thermal slowdown.** The Spark's GPU settled at 63 to 65 °C, and clocks held at about 2,500 MHz.
+- **Activity on the Halo CPU speeds up the RPC head.** At one request, RPC ran about 5 to 7% faster while another program kept the Halo CPU busy, and returned to the baseline within about 20 s of it stopping. That's likely CPU idle states adding latency to the head's per-token round trip, though not proven; the power plan was already High performance. It shows up only through RPC, not with the Spark server.
+- **The first request of a new batch size is slow.** Over RPC, the first request at a new concurrency took up to 1.5 s to its first token, against 0.4 s afterwards.
+- **The split head needs more Halo RAM at higher concurrency.** At four requests it used about 8 GiB more system RAM, on a plateau that was released when the server stopped.
+
+### Reverse layout: Spark as head, Halo as worker
+
+The guide's command, with the head on the Spark (CUDA) and `ggml-rpc-server` on the Halo (Vulkan) bound to 10.10.10.1. Tokens per second:
+
+| Where the model runs | Prompt, 512 | Prompt, 2,048 | Generation |
+| --- | --- | --- | --- |
+| Spark native, CUDA | 2,277 ± 18 | 2,223 ± 5 | 61.4 ± 0.1 |
+| All on the Halo, Spark as head | 1,601 ± 5 | 1,562 ± 4 | 40.0 ± 0.1 |
+| Split, Spark as head | 1,754 ± 0 | 2,061 ± 3 | 45.2 ± 0.3 |
+
+The reverse is the slower way round. With everything on the Halo, RPC cost 27% of the Halo's native generation speed, against 17% in the forward direction. Split, it was 7% slower generating and 21% slower on 2,048-token prompts than the forward split. Keep the head on the Halo.
+
+### ROCm as the RPC head
+
+Lemonade's ROCm build b1381 (build 12548, commit `f8caa5ea3`) as head, against a Spark worker built from the same commit. Vulkan rows were re-run minutes later in the same session, for comparison. Tokens per second:
+
+| Where the model runs | Head | Prompt, 512 | Prompt, 2,048 | Generation |
+| --- | --- | --- | --- | --- |
+| Halo only | ROCm | 1,562 ± 15 | 1,552 ± 8 | 50.2 ± 0.1 |
+| Halo only | Vulkan | 1,652 ± 1 | 1,615 ± 26 | 55.3 ± 0.1 |
+| All on the Spark | ROCm | 1,981 ± 67 | 2,010 ± 62 | 53.1 ± 0.1 |
+| All on the Spark | Vulkan | 2,126 ± 28 | 2,076 ± 22 | 53.2 ± 0.2 |
+| Split | ROCm | 1,680 ± 19 | 2,409 ± 30 | 47.1 ± 0.2 |
+| Split | Vulkan | 1,739 ± 29 | 2,546 ± 39 | 50.3 ± 0.1 |
+
+ROCm tied Vulkan on generation when every layer was on the Spark, since the head does little compute then, and was 3 to 9% slower everywhere else (9% on generation with the Halo alone). Vulkan remains the better head on Windows.
+
 ## Running the server on the Spark instead
 
 For any model that fits in the Spark's memory this is the faster arrangement, and it needs no matching builds because nothing but HTTP crosses the cable.
@@ -365,7 +417,7 @@ cd ~/llama.cpp-b12477/build-rpc/bin
 LD_LIBRARY_PATH=. ./llama-server -m <model.gguf> -ngl 99 --host 10.10.10.2 --port 8097 --ctx-size 8192 --flash-attn on --api-key <key>
 ```
 
-On the Halo, point the client at `http://10.10.10.2:8097/v1/chat/completions` with the key as a bearer token. The test here ran without `--api-key`; add it anyway, since unlike the RPC worker the server can require one.
+On the Halo, point the client at `http://10.10.10.2:8097/v1/chat/completions` with the key as a bearer token. Use `--api-key-file <file>` to keep the key out of the process list and shell history. With a key set, requests with no key or a wrong one got `401 Invalid API Key` on `/v1/chat/completions` and `/v1/models`. `/health` still answers without a key, which reveals only that a server is up. Under sustained load this layout held 59 tok/s at one request and 150 tok/s across four, with no errors (see Results, Under sustained load).
 
 Keep it bound to 10.10.10.2. The trade-off against RPC is that the model file lives on the Spark and the Halo needs its own fallback for when the cable is unplugged.
 
@@ -405,6 +457,12 @@ Separate from the link, these were measured on the Halo alone with the 35B at Q8
 | SSH session lost while moving the Spark's LAN address | The address moved before the new path was proven | Use the detached swap with automatic rollback in step 1 |
 | `rpc-server` not found after building | The binary was renamed | Run `ggml-rpc-server` |
 | The Halo sleeps and the API disappears | Windows default sleep timer on AC power | Disable sleep and USB selective suspend, step 2 |
+| The Halo's free RAM falls to almost zero while loading a model that runs entirely on the Spark | The default memory-mapped load keeps the file in the head's working set on Windows (about 24 GiB here) | Start the head with `--load-mode none` (`-lm none` for `llama-bench`) |
+| `error: invalid argument: --no-mmap` | Recent builds replaced it with `--load-mode` | Use `--load-mode none` |
+| A Windows Firewall "allow access" dialog appears when the worker or head first listens, even though an allow rule already covers the Spark | The Public profile has notify-on-listen on, and no rule names the program | Leave it unanswered; the existing address-scoped rule already admits the Spark. Clicking Allow adds program rules for any address on Private and Public; remove them afterwards in an administrator PowerShell |
+| CMake fails over SSH with "No CMAKE_CUDA_COMPILER could be found" | `nvcc` isn't on the PATH in a non-interactive SSH session | Pass `-DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc` |
+| A Halo worker started with `-c` writes about 34 GB to `%LOCALAPPDATA%\llama.cpp\rpc` | That is the default cache location | Set `LLAMA_CACHE` to a folder of your choice before starting it |
+| RPC generation is 5 to 7% slower when the Halo is otherwise idle | Most likely CPU idle states adding latency to each per-token round trip (not proven) | Expect it; when comparing runs, keep other Halo CPU load the same |
 
 Other guides report a crash on load with RPC that `-fit off` works around. It did not occur here, but it is the first thing to try if `llama-server` or `llama-bench` segfaults with `--rpc`.
 
@@ -416,15 +474,14 @@ This layout keeps it safe by construction: the worker binds only to 10.10.10.2, 
 
 ## Not yet tested
 
-- A model too big for either box, which is the case splitting exists for.
+- A model too big for either box, which is the case splitting exists for. A candidate is chosen (Qwen3.5-397B-A17B `UD-Q3_K_S`, 153 GiB), but running it needs the other models on both machines stopped first.
 - Whether MTP's different answers are less correct, as opposed to merely different.
-- The Spark-hosted server with an API key and under sustained load; one model and two requests were tried.
-- `llama-server` with `--rpc` under real load. Only a single request was tried, and nothing was tested with the cable pulled mid-session.
-- ROCm on the Halo as the RPC head. ROCm was measured on the Halo alone (see Tuning the Halo) and was slower than Vulkan there, but every RPC and split test used Vulkan. Published Halo-to-Halo tests found ROCm held up better than Vulkan on large prompts in a cluster.
-- Jumbo frames. They should shorten model load times and are unlikely to change latency.
+- The cable pulled mid-session. RPC was stable over about 3 hours 20 minutes of load (see Results), but the link was never broken during a run.
+- Jumbo frames. They should shorten model load times and are unlikely to change latency. Testing needs root on the Spark and an adapter setting on the Halo.
 - Which end causes the 2 to 3 ms batching delay. A second 10GbE adapter of a different make on the Halo would show whether the USB adapter is the cause.
 - The worker as a boot-time service, and automatic recovery when the link returns.
-- The reverse layout, Spark as head and Halo as worker.
+- Whether keeping the Halo's CPU out of deep idle states (minimum processor state, or a busy core) recovers the 5 to 7% that an idle CPU costs the RPC head. Not yet controlled: one busy thread was too light a load to separate it from noise.
+- The 1.9 GB fall in the Spark's available memory over 85 minutes of serving, with other servers running there. Not attributed.
 
 ## References
 
@@ -440,9 +497,13 @@ This layout keeps it safe by construction: the worker binds only to 10.10.10.2, 
 - [unsloth/Qwen3.6-35B-A3B-MTP-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF): the MTP-capable model files used for the tuning tests.
 - [llama.cpp issue #25618](https://github.com/ggml-org/llama.cpp/issues/25618) and [issue #27407](https://github.com/ggml-org/llama.cpp/issues/27407): greedy output diverging under speculative decoding.
 
-## Script
+## Scripts
 
 `scripts/Set-HaloDirect.ps1` applies step 2's network settings in one run: it finds the USB 10GbE adapter, renames it, sets the static address, adds the firewall rule and pings the Spark. Run it with `-Check` first to see which adapter it picked without changing anything.
+
+`scripts/loadgen.py` is the sustained-load client used for the load tests: standard-library Python, N concurrent streaming requests for a set time against `/v1/chat/completions`, one JSON line per request and a summary at the end. It reads an API key from a file with `--key-file` and never prints it.
+
+`scripts/guarded-start.ps1` starts a llama.cpp process on the Halo behind a RAM guard: it forces `--load-mode none`, refuses to start below 8 GiB of available RAM, and kills the process if available RAM drops under 4 GiB.
 
 ## Acknowledgments
 
