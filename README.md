@@ -1,6 +1,6 @@
 # Linking an HP ZGX Nano (NVIDIA DGX Spark platform) and an AMD Ryzen AI Halo for llama.cpp RPC
 
-Version 1.3.0 · tested 2026-11-20 and 2026-11-21
+Version 1.4.0 · tested 2026-11-20, 2026-11-21 and 2026-11-23
 
 ![An HP ZGX Nano stacked on an AMD Ryzen AI Halo, joined by a USB 10GbE adapter and one direct cable](images/spark-halo-hero.svg)
 
@@ -15,8 +15,10 @@ Measured on this setup on 2026-11-20:
 - The Spark's GPU is faster run natively than through RPC. A `llama-server` on the Spark, called from the Halo over the same cable, generated at 60.8 tokens per second against 51.1 through RPC. RPC is for pooling memory, not for raw speed.
 - On the Halo itself, a larger micro-batch made long prompts 24% faster, Vulkan beat ROCm, and multi-token prediction added 40 to 45% to generation but made temperature-0 answers depend on what the server had answered before.
 - Splitting a model that fits on one box cost 12% on generation. Splitting is for models too large for either box.
+- A model too large for either box does run across both. A 397B model (153 GiB) generated at 14.1 tokens per second, with a little over half of it on the Spark (measured 2026-11-23).
+- RPC does not survive a pulled cable. The head exits within seconds, the worker stays stuck on the dead connection, and recovery means restarting the worker and then the head (measured 2026-11-23).
 
-When this was written I could find published llama.cpp RPC clusters of Spark with Spark, Halo with Halo, and Spark with Mac, but no write-up pairing a Spark with a Strix Halo machine. If one exists, I missed it.
+When this was written I could find published llama.cpp RPC clusters of Spark with Spark, Halo with Halo, and Spark with Mac, and one result pairing a Spark with a Strix Halo machine: TechPowerUp's Halo review pooled the two over a 2.5 Gb LAN (see References). I found no step-by-step guide for the pair, and none using a direct 10GbE link. If one exists, I missed it.
 
 Everything below was run on real hardware. Commands are shown as they were used, with addresses you should change marked as such. Anything not run exactly as written is labeled.
 
@@ -242,7 +244,7 @@ iperf3 -c 10.10.10.2 -B 10.10.10.1 -t 10 -R -P 4
 | Spark to Halo, 1 stream | 7.70 Gb/s |
 | Spark to Halo, 4 streams | 7.73 Gb/s |
 
-One stream matches four, so the ceiling is the USB side of the adapter, not CPU or TCP. MTU was 1500 on both ends; jumbo frames were not tested.
+One stream matches four, so the ceiling is the USB side of the adapter, not CPU or TCP. MTU was 1500 on both ends for this measurement; jumbo frames were tried later (see Results, Jumbo frames), without re-running `iperf3`.
 
 Latency depends on how busy the link is. At 5 to 100 pings per second the round trip averaged about 1.6 ms; at 500 per second it averaged 0.4 ms with a 0.1 ms minimum. That pattern suggests a batching timer of 2 to 3 ms in one of the two network chips. Three adapter settings were tried on the Halo (USB Transmit Burst Level, Miscellaneous Transfer Settings, Receive Segment Coalescing) and none changed it, so they were set back to defaults. The cost in practice is visible in the results: the RPC hop costs more on generation than on prompts.
 
@@ -379,6 +381,55 @@ The same 35B, served for 30 minutes at each of 1, 2 and 4 concurrent requests. E
 - **The first request of a new batch size is slow.** Over RPC, the first request at a new concurrency took up to 1.5 s to its first token, against 0.4 s afterwards.
 - **The split head needs more Halo RAM at higher concurrency.** At four requests it used about 8 GiB more system RAM, on a plateau that was released when the server stopped.
 
+### A model too big for either box
+
+Qwen3.5-397B-A17B at Unsloth's `UD-Q3_K_S` (153.03 GiB in five files) fits on neither machine: with nothing else loaded, the Halo's GPU had 106.3 GiB free and the Spark's 118.7 GiB. The model files stay on the Halo and llama.cpp chooses the split. Same command as above, with `-lm none`. Tokens per second:
+
+| Where the model runs | Prompt, 512 tokens | Prompt, 2,048 tokens | Generation |
+| --- | --- | --- | --- |
+| Split, Vulkan + RPC | 302.0 ± 3.9 | 463.5 ± 4.6 | 14.06 ± 0.03 |
+
+As a server (`--ctx-size 8192 -np 1`), 21 of 21 requests succeeded over 10 minutes at one request, each generating 400 tokens at 14.0 tok/s. Time to first token was 0.85 s at the median.
+
+- **The split.** The Spark held 82.6 GiB of the weights and about 87 GB in all, and the Halo held the other 70 GiB of weights. The Spark was left with 34 GB available.
+- **Load time.** The server loaded in 4 minutes 6 seconds with the Spark's share already in the worker's cache. The benchmark before it took 4 minutes 55 seconds from start to finish with only 40% of that share cached, so sending the rest over the cable added little. A load with an empty cache was not timed. A later repeat of the benchmark with the whole share cached took 4 minutes 56 seconds, so the cache saved nothing measurable; reading the 153 GiB on the Halo is the cost.
+- **Halo RAM.** With `--load-mode none`, available system RAM fell from 19.8 GiB to 16.0 GiB at the lowest.
+- **Keep everything else on the Spark stopped.** On the first attempt another 35B model was started on the Spark while the worker held 87 GB. The Spark ran out of memory and the kernel killed the worker, the other servers and the desktop session's processes.
+- **Disk.** The worker's cache (`-c`) grew by 82.6 GiB on the Spark.
+
+Limits: one request at a time, an 8,192-token context, two benchmark repetitions, and one model. Everything else was stopped on both machines for this run, unlike the tables above.
+
+### Cable pulled mid-session
+
+With the 35B entirely on the Spark and one request generating at about 50 tok/s, the cable was pulled for 27 seconds and plugged back in. Full timeline in [RESULTS-untested.md](RESULTS-untested.md).
+
+| | What happened |
+| --- | --- |
+| The request in flight | Failed with a connection reset about 2.5 s after the pull. It did not hang. Later requests were refused at once. |
+| The head (Halo) | Exited about 2.5 s after the pull with `recv failed` and `Remote RPC server crashed or returned malformed response`. It does not reconnect. |
+| The worker (Spark) | Stayed up and logged nothing. Four minutes after the link returned it still held the dead connection and about 36 GB of memory. |
+| After reconnecting | Nothing recovered by itself. A head restarted alone hung with an empty log, because the worker serves one connection at a time and was still blocked on the dead one. |
+| Recovery | Restart the worker, then the head. About 1.5 minutes (92 s here), 69 s of it the head's model load. Speed afterwards matched the speed before. |
+
+The link itself came back at 10 Gb/s as soon as the cable was in. A head that is killed while the link is up is different: the worker logged the closed connection at once and freed its memory.
+
+### Jumbo frames
+
+The 35B entirely on the Spark, worker without `-c` so every load sends the 37.8 GB over the cable. Three runs: MTU 1500, MTU 9000, then 1500 again. Each is three timed loads, from starting the head to `/health` ok, with three requests after each load.
+
+| | MTU 1500 | MTU 9000 | MTU 1500 again |
+| --- | --- | --- | --- |
+| Load time | 47.4, 47.2, 47.4 s | 47.2, 47.1, 47.4 s | 47.6, 47.2, 47.6 s |
+| Generation, mean of 9 requests (tok/s) | 49.4 | 52.3 | 50.2 |
+| Generation, range | 49.1 to 49.7 | 51.8 to 52.8 | 49.0 to 51.6 |
+| Time to first token, median | 264 to 274 ms | 264 to 279 ms | 263 to 279 ms |
+
+- **Jumbo frames did not shorten the load.** 47 s for 37.8 GB is 6.4 Gb/s over the whole load, already close to the adapter's 7.8 Gb/s.
+- **Generation was 4 to 6% faster with jumbo frames**, and fell back when the MTU was returned to 1500. The likely reason is that the worker returns a full set of logits for every token, and larger packets carry them in far fewer pieces. It is a small sample: nine requests per run, one model, every layer on the Spark.
+- **The split 397B gained nothing.** Repeated at MTU 9000, it gave 302.2 and 463.4 tok/s on prompts and 14.03 on generation, against 302.0, 463.5 and 14.06 at MTU 1500. Its server load took 4 min 16 s against 4 min 6 s.
+
+To set it: `sudo ip link set dev enP7s7 mtu 9000` on the Spark (temporary), and on the Halo, in an administrator PowerShell, `Set-NetAdapterAdvancedProperty -Name HaloDirect -RegistryKeyword '*JumboPacket' -RegistryValue 9014`, which resets the adapter for a few seconds. Check with `ping -f -l 8972 10.10.10.2` from the Halo.
+
 ### Reverse layout: Spark as head, Halo as worker
 
 The guide's command, with the head on the Spark (CUDA) and `ggml-rpc-server` on the Halo (Vulkan) bound to 10.10.10.1. Tokens per second:
@@ -462,6 +513,9 @@ Separate from the link, these were measured on the Halo alone with the 35B at Q8
 | A Windows Firewall "allow access" dialog appears when the worker or head first listens, even though an allow rule already covers the Spark | The Public profile has notify-on-listen on, and no rule names the program | Leave it unanswered; the existing address-scoped rule already admits the Spark. Clicking Allow adds program rules for any address on Private and Public; remove them afterwards in an administrator PowerShell |
 | CMake fails over SSH with "No CMAKE_CUDA_COMPILER could be found" | `nvcc` isn't on the PATH in a non-interactive SSH session | Pass `-DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc` |
 | A Halo worker started with `-c` writes about 34 GB to `%LOCALAPPDATA%\llama.cpp\rpc` | That is the default cache location | Set `LLAMA_CACHE` to a folder of your choice before starting it |
+| After the cable is unplugged and replugged, the head is gone and a restarted head hangs with an empty log | The head aborts when the link drops; the worker never notices and stays blocked on the dead connection | Restart the worker first, then the head |
+| The Spark runs out of memory and the kernel kills the worker and other programs | Something else was started on the Spark while the worker held most of its memory | Keep other GPU programs on the Spark stopped for as long as a large model is loaded |
+| The Spark's disk fills by the size of its share of each model | The worker's `-c` cache keeps every tensor it has received (82.6 GiB for the 397B) | Clear `~/.cache/llama.cpp/rpc` when done, or run the worker without `-c` |
 | RPC generation is 5 to 7% slower when the Halo is otherwise idle | Most likely CPU idle states adding latency to each per-token round trip (not proven) | Expect it; when comparing runs, keep other Halo CPU load the same |
 
 Other guides report a crash on load with RPC that `-fit off` works around. It did not occur here, but it is the first thing to try if `llama-server` or `llama-bench` segfaults with `--rpc`.
@@ -474,22 +528,30 @@ This layout keeps it safe by construction: the worker binds only to 10.10.10.2, 
 
 ## Not yet tested
 
-- A model too big for either box, which is the case splitting exists for. A candidate is chosen (Qwen3.5-397B-A17B `UD-Q3_K_S`, 153 GiB), but running it needs the other models on both machines stopped first.
+**Not tested**
+
 - Whether MTP's different answers are less correct, as opposed to merely different.
-- The cable pulled mid-session. RPC was stable over about 3 hours 20 minutes of load (see Results), but the link was never broken during a run.
-- Jumbo frames. They should shorten model load times and are unlikely to change latency. Testing needs root on the Spark and an adapter setting on the Halo.
-- Which end causes the 2 to 3 ms batching delay. A second 10GbE adapter of a different make on the Halo would show whether the USB adapter is the cause.
-- The worker as a boot-time service, and automatic recovery when the link returns.
-- Whether keeping the Halo's CPU out of deep idle states (minimum processor state, or a busy core) recovers the 5 to 7% that an idle CPU costs the RPC head. Not yet controlled: one busy thread was too light a load to separate it from noise.
+- The worker as a boot-time service, and automatic recovery when the link returns. The cable test (see Results, Cable pulled mid-session) shows what such a service has to handle: after a link break the worker stays stuck on the dead connection, and recovery is a worker restart, then a head restart. Nothing here does that automatically.
 - The 1.9 GB fall in the Spark's available memory over 85 minutes of serving, with other servers running there. Not attributed.
+- Which end causes the 2 to 3 ms batching delay. A second 10GbE adapter of a different make on the Halo would show whether the USB adapter is the cause.
+- Whether keeping the Halo's CPU out of deep idle states (minimum processor state, or a busy core) recovers the 5 to 7% that an idle CPU costs the RPC head. Not yet controlled: one busy thread was too light a load to separate it from noise.
+
+**Tested, with gaps**
+
+- Jumbo frames made generation 4 to 6% faster for the 35B entirely on the Spark (nine requests per run) and changed nothing for the split 397B. Not tested: a longer run, or a split of a small model, which would show whether it is the split or the model's size that removes the gain.
+- The too-big model ran at one request and an 8,192-token context. Not tested: more than one request at a time, or a larger context.
+- Its load was timed only with part or all of the Spark's share already in the worker's cache. Not tested: a load with an empty cache.
+- The cable pull lasted 27 seconds, with every layer on the Spark, and the worker was restarted after four minutes. Not tested: how long a worker stays stuck if nobody restarts it, a pull shorter than the head's 2.5 s reaction, and a pull with layers on both machines.
 
 ## References
 
 - [llama.cpp RPC README](https://github.com/ggml-org/llama.cpp/blob/master/tools/rpc/README.md): build flags, worker options, the security warning.
 - [AMD playbook: Clustering Two Ryzen AI Halos with RPC](https://developer.amd.com/playbooks/clustering-rpc-server/): the Halo-to-Halo ROCm setup.
-- [TechPowerUp: AMD Ryzen AI Halo review, "AMD + NVIDIA"](https://www.techpowerup.com/review/amd-ryzen-ai-max-395-strix-halo-mini-pc/18.html): a Halo and a DGX Spark pooled with llama.cpp (ROCm + CUDA) over a 2.5 Gb LAN to hold a model too big for one box, the case this guide has not tested.
+- [TechPowerUp: AMD Ryzen AI Halo review, "AMD + NVIDIA"](https://www.techpowerup.com/review/amd-ryzen-ai-max-395-strix-halo-mini-pc/18.html): a Halo and a DGX Spark pooled with llama.cpp (ROCm + CUDA) over a 2.5 Gb LAN to hold a model too big for one box, the case measured here under "A model too big for either box".
 - [LTT Labs: AMD Ryzen AI Halo cluster](https://lttlabs.com/articles/2026/07/24/amd-ryzen-ai-halo-cluster): cluster vs single node, Vulkan vs ROCm, observed network traffic.
 - [llama-cpp-distributed-benchmarks](https://github.com/kjaiswal/llama-cpp-distributed-benchmarks): DGX Spark with a Mac Studio over 10GbE, the closest earlier mixed-vendor result.
+- [Classmethod: DeepSeek V4 Flash-0731 on two DGX Spark units](https://dev.classmethod.jp/en/articles/dgx-spark-2node-deepseek-v4-flash-0731/): one 284B model on two Sparks over a 200 Gb/s link, through llama.cpp RPC and through vLLM, with measurements for each. The closest published comparison for the too-big-model result here.
+- [MiaAI-Lab: DeepSeek V4 Flash on 2x DGX Spark](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark): a vLLM tensor-parallel recipe for two Sparks joined by their QSFP ports. It needs two NVIDIA nodes, so it does not apply to a Spark and Halo pair.
 - [NVIDIA DGX Spark hardware overview](https://docs.nvidia.com/dgx/dgx-spark/hardware.html): rear-panel ports.
 - [NVIDIA forum: DGX Spark USB port speed](https://forums.developer.nvidia.com/t/dgx-spark-usb-ports-are-usb-4-40gbps-o-so-why/349121/11): the ports are USB 3.2 Gen 2x2.
 - [NVIDIA forum: DGX Spark multi-node inference report](https://forums.developer.nvidia.com/t/dgx-spark-multi-node-llm-inference-report-for-qwen3-235b-model/355126): the `-fit off` workaround.

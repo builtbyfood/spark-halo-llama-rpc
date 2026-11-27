@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spark + Halo llama.cpp RPC: interactive guide</title>
+<!-- Interactive guide v1.0.1 (2026-11-27). Companion to builtbyfood/spark-halo-llama-rpc. -->
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#16202b;--mute:#566372;--line:#d5dbe3;--acc:#0b5cad;--acc-ink:#fff;--ok:#1a7f37;--warn:#8a5a00;--bad:#b3261e;--code:#eef1f5;--bar:#2f6fb5;--bar2:#7a8797}
+@media (prefers-color-scheme:dark){:root{--bg:#0f141a;--panel:#171d25;--ink:#e6ebf1;--mute:#a3afbd;--line:#2c3644;--acc:#6cb0ff;--acc-ink:#0b1220;--ok:#56d364;--warn:#e3b341;--bad:#ff8b82;--code:#0b1016;--bar:#5a9ee6;--bar2:#6b7889}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--acc)}
+header,main,footer{max-width:1060px;margin:0 auto;padding:0 18px}
+header{padding-top:26px}
+h1{font-size:1.6rem;line-height:1.25;margin:0 0 6px}
+h2{font-size:1.25rem;margin:0 0 8px}
+h3{font-size:1.05rem;margin:0 0 6px}
+p{margin:0 0 10px}
+.sub{color:var(--mute);font-size:.92rem}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin:14px 0}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;min-height:38px;padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel)}
+button:hover{border-color:var(--acc)}
+button.pri{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:600}
+button[aria-pressed=true],button[aria-selected=true]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);font-weight:600}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+nav.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 0;position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:5}
+.view{display:none}.view.on{display:block}
+.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:.85rem;color:var(--mute)}
+label.f input{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;color:var(--ink);font-family:ui-monospace,Consolas,Menlo,monospace;font-size:.9rem;min-width:0}
+.cmd{position:relative;margin:8px 0}
+.cmd pre{margin:0;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px 78px 10px 12px;overflow-x:auto;font:.86rem/1.5 ui-monospace,Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
+.cmd button{position:absolute;top:6px;right:6px;min-height:30px;padding:2px 10px;font-size:.8rem}
+.where{display:inline-block;font-size:.75rem;font-weight:700;letter-spacing:.04em;border:1px solid var(--line);border-radius:5px;padding:1px 7px;margin-right:6px;color:var(--mute)}
+.note{border-left:4px solid var(--warn);background:var(--code);padding:8px 12px;border-radius:0 8px 8px 0;margin:10px 0;font-size:.93rem}
+.note.bad{border-color:var(--bad)}.note.ok{border-color:var(--ok)}
+ol.items{list-style:none;margin:0;padding:0}
+ol.items>li{border-top:1px solid var(--line);padding:12px 0}
+ol.items label.chk{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+ol.items input[type=checkbox]{width:20px;height:20px;margin-top:3px;flex:none}
+.done>label.chk span{color:var(--mute)}
+.expect{font-size:.9rem;color:var(--mute);margin:4px 0 0 30px}
+.indent{margin-left:30px}
+progress{width:100%;height:10px}
+.steps{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.cards{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.cards button{text-align:left;padding:12px;height:100%;display:flex;flex-direction:column;gap:4px}
+.cards button small{color:var(--mute);font-weight:400}
+.kv{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:10px 0}
+.kv div{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.kv b{display:block;font-size:1.25rem;font-variant-numeric:tabular-nums}
+.kv span{font-size:.82rem;color:var(--mute)}
+.bars{display:grid;grid-template-columns:minmax(120px,max-content) 1fr max-content;gap:6px 10px;align-items:center;font-size:.9rem}
+.bars .t{height:18px;background:var(--code);border-radius:4px;overflow:hidden}
+.bars .t i{display:block;height:100%;background:var(--bar);border-radius:4px}
+.bars .t i.alt{background:var(--bar2)}
+.bars .v{font-variant-numeric:tabular-nums;text-align:right}
+.bars .g{grid-column:1/-1;font-weight:600;margin-top:8px}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-size:.82rem}
+.scroll{overflow-x:auto}
+svg text{font-family:inherit}
+.tl{display:grid;gap:8px;margin:12px 0}
+.tl div{display:flex;gap:10px;align-items:baseline;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.tl time{font-variant-numeric:tabular-nums;color:var(--mute);min-width:74px;font-size:.88rem}
+.state{display:inline-block;font-weight:700;border:2px solid currentColor;border-radius:999px;padding:2px 14px}
+.s-ok{color:var(--ok)}.s-bad{color:var(--bad)}.s-warn{color:var(--warn)}
+footer{color:var(--mute);font-size:.85rem;padding-bottom:40px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+</style>
+</head>
+<body>
+<header>
+<h1>Linking an HP ZGX Nano (NVIDIA DGX Spark platform) and an AMD Ryzen AI Halo for llama.cpp RPC</h1>
+<p class="sub">Interactive guide v1.0.1 · matches guide v1.4.0 · companion to <a href="https://github.com/builtbyfood/spark-halo-llama-rpc">builtbyfood/spark-halo-llama-rpc</a> · every figure was measured on real hardware, November 2026</p>
+<p>One direct 10GbE cable joins the two machines. The Halo (Windows, Vulkan) holds the models and serves the API; the ZGX Nano, called "the Spark" here, lends its GPU when it is connected.</p>
+<nav class="tabs" role="tablist" aria-label="Guide sections">
+<button role="tab" data-v="setup">1. Set up</button>
+<button role="tab" data-v="choose">2. Pick a layout</button>
+<button role="tab" data-v="results">3. Results</button>
+<button role="tab" data-v="linkloss">4. Cable-pull drill</button>
+<button role="tab" data-v="gotchas">5. Gotchas</button>
+</nav>
+</header>
+<main>
+
+<section class="view" id="v-setup" role="tabpanel">
+<div class="panel">
+<h2>Your values</h2>
+<p class="sub">Fill these in and every command below updates. They stay in this browser only. Do not put passwords or API keys here.</p>
+<div class="grid" id="fields"></div>
+<div class="row" style="margin-top:10px"><button id="reset">Reset values and checkmarks</button></div>
+</div>
+<div class="panel">
+<h2>Topology</h2>
+<div class="scroll">
+<svg viewBox="0 0 760 230" role="img" aria-labelledby="topo-t" style="min-width:560px;width:100%;height:auto">
+<title id="topo-t">The Halo's USB 10GbE adapter connects straight to the Spark's built-in 10GbE port. Each machine reaches the LAN on its other port.</title>
+<g fill="none" stroke="currentColor" stroke-width="1.5">
+<rect x="40" y="70" width="230" height="90" rx="10"/><rect x="490" y="70" width="230" height="90" rx="10"/>
+<rect x="300" y="10" width="160" height="40" rx="8" stroke-dasharray="5 4"/>
+<path d="M270 130 H490" stroke-width="4"/>
+<path d="M155 70 V30 H300" stroke-dasharray="5 4"/><path d="M605 70 V30 H460" stroke-dasharray="5 4"/>
+</g>
+<g fill="currentColor" font-size="14">
+<text x="155" y="100" text-anchor="middle" font-weight="700">Halo (head)</text>
+<text x="155" y="120" text-anchor="middle" font-size="12">Windows 11 · Vulkan</text>
+<text x="155" y="150" text-anchor="middle" font-size="12" id="t-halo">10.10.10.1</text>
+<text x="605" y="100" text-anchor="middle" font-weight="700">Spark (worker)</text>
+<text x="605" y="120" text-anchor="middle" font-size="12">DGX OS · CUDA</text>
+<text x="605" y="150" text-anchor="middle" font-size="12" id="t-spark">10.10.10.2</text>
+<text x="380" y="35" text-anchor="middle" font-size="12">LAN (SSH, updates)</text>
+<text x="380" y="122" text-anchor="middle" font-size="12">direct 10GbE, /30</text>
+<text x="380" y="148" text-anchor="middle" font-size="12">no gateway, no DNS</text>
+<text x="380" y="190" text-anchor="middle" font-size="12">USB 10GbE adapter on the Halo → built-in 10GbE port on the Spark</text>
+<text x="380" y="210" text-anchor="middle" font-size="12">Built-in 2.5GbE (Halo) and a USB gigabit adapter (Spark) stay on the LAN</text>
+</g>
+</svg>
+</div>
+<div class="note bad"><strong>Security.</strong> The llama.cpp RPC server has no authentication and no encryption. Bind the worker only to the direct-link address. Never bind it to <code>0.0.0.0</code> or a LAN address.</div>
+</div>
+<div class="panel">
+<div class="row" style="justify-content:space-between"><h2 style="margin:0">Steps</h2><span class="sub" id="prog-t"></span></div>
+<progress id="prog" max="1" value="0" aria-label="Setup progress"></progress>
+<div class="steps" id="stepnav" style="margin-top:12px"></div>
+<div id="step"></div>
+<div class="row" style="margin-top:12px"><button id="prev">Previous step</button><button id="next" class="pri">Next step</button></div>
+</div>
+</section>
+
+<section class="view" id="v-choose" role="tabpanel">
+<div class="panel">
+<h2>How big is the model?</h2>
+<label class="f" for="size" style="max-width:420px">Model file size: <span id="size-o" style="color:var(--ink);font-weight:700"></span>
+<input type="range" id="size" min="4" max="240" value="35" step="1" style="padding:0"></label>
+<div class="bars" style="margin-top:12px" id="cap"></div>
+<div class="note ok" id="rec" aria-live="polite"></div>
+<p class="sub">Rule of thumb from the free memory each machine reported with nothing else loaded (106.3 GiB on the Halo's GPU, 118.7 GiB on the Spark). Only a 35 GiB and a 153 GiB model were tested. Leave room for context, and stop other models first when a model is close to a limit.</p>
+</div>
+<div class="panel">
+<h2>Layouts</h2>
+<div class="cards" id="lay-cards"></div>
+<div id="lay" style="margin-top:14px" aria-live="polite"></div>
+</div>
+</section>
+
+<section class="view" id="v-results" role="tabpanel">
+<div class="panel">
+<h2>35B under sustained load</h2>
+<p class="sub">Qwen3.6-35B-A3B Q8_0, 30 minutes at each level, 400 streamed tokens per request, temperature 0. No errors in any run.</p>
+<div class="row" id="m-btns" role="group" aria-label="Metric"></div>
+<div class="bars" id="load" style="margin-top:10px"></div>
+<p class="sub" id="load-n" style="margin-top:10px"></p>
+</div>
+<div class="panel">
+<h2>35B benchmark, four layouts</h2>
+<p class="sub"><code>llama-bench -ngl 99 -p 512,2048 -n 128 -r 2</code>, tokens per second.</p>
+<div class="row" id="b-btns" role="group" aria-label="Benchmark measure"></div>
+<div class="bars" id="bench" style="margin-top:10px"></div>
+</div>
+<div class="panel">
+<h2>A model too big for either machine</h2>
+<p>Qwen3.5-397B-A17B at UD-Q3_K_S, 153 GiB, split across both machines with every other model stopped.</p>
+<div class="kv">
+<div><b>14.06</b><span>tok/s generation</span></div>
+<div><b>302 / 464</b><span>tok/s on 512 / 2,048-token prompts</span></div>
+<div><b>4 min 6 s</b><span>load, worker cache warm</span></div>
+<div><b>21 of 21</b><span>requests completed</span></div>
+<div><b>82.6 GiB</b><span>of weights on the Spark</span></div>
+<div><b>70.4 GiB</b><span>on the Halo (46%)</span></div>
+</div>
+<p>This is the case splitting exists for: neither machine can hold the file, together they can.</p>
+</div>
+<div class="panel">
+<h2>Jumbo frames (MTU 9000)</h2>
+<div class="bars" id="jumbo"></div>
+<p style="margin-top:10px">A 4 to 6% gain on generation for the 35B placed entirely on the Spark, no change in load time, and no gain for the 153 GiB split (14.03 against 14.06). The default MTU of 1500 is fine.</p>
+</div>
+<div class="panel">
+<h2>Other measured results</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Question</th><th scope="col">Result</th></tr></thead>
+<tbody>
+<tr><td>Link throughput</td><td>7.7 to 7.9 Gb/s both ways, one stream equal to four. The USB side of the adapter is the ceiling.</td></tr>
+<tr><td>Reverse layout (Spark as head, Halo as worker)</td><td>Slower: 40.0 tok/s with everything on the Halo, 45.2 split. Keep the head on the Halo.</td></tr>
+<tr><td>ROCm instead of Vulkan as the head</td><td>Tied when every layer is on the Spark, 3 to 9% slower elsewhere.</td></tr>
+<tr><td>Larger micro-batch on the Halo (<code>-ub 2048</code>)</td><td>Long prompts 24% faster, generation unchanged.</td></tr>
+<tr><td>Multi-token prediction on the Halo</td><td>Generation 41 to 45% faster, but temperature-0 answers then depend on what the server answered before.</td></tr>
+<tr><td>Halo CPU otherwise idle</td><td>RPC generation 5 to 7% slower than when another program keeps the CPU busy. Likely CPU idle states; not proven.</td></tr>
+</tbody></table></div>
+</div>
+</section>
+
+<section class="view" id="v-linkloss" role="tabpanel">
+<div class="panel">
+<h2>What happens when the cable is pulled</h2>
+<p>Tested mid-session with the model running through RPC. Walk through it:</p>
+<div class="row" id="drill-btns"></div>
+<p style="margin-top:14px">Head on the Halo: <span class="state" id="d-head"></span> &nbsp; Worker on the Spark: <span class="state" id="d-work"></span></p>
+<div class="tl" id="d-log" aria-live="polite"></div>
+<div class="note"><strong>Takeaway.</strong> Nothing recovers by itself. The head exits about 2.5 s after the pull and the worker is left stuck. Recovery is: reconnect, restart the worker, then restart the head. Allow about 1.5 minutes, 69 s of it the head's model load. Keep a Halo-only fallback for the gap.</div>
+</div>
+</section>
+
+<section class="view" id="v-gotchas" role="tabpanel">
+<div class="panel">
+<h2>Gotchas</h2>
+<label class="f" for="gq" style="max-width:420px">Search symptoms<input id="gq" type="search" placeholder="for example: firewall, RAM, mmap"></label>
+<p class="sub" id="g-n" aria-live="polite" style="margin-top:8px"></p>
+<div id="g-list"></div>
+</div>
+</section>
+</main>
+<footer>
+<p>Work done at <a href="https://www.milestonetech.com">Milestone Computer Technology, Inc.</a>, on Milestone hardware. Independent write-up: not affiliated with, sponsored by or endorsed by AMD, NVIDIA, HP, WAVLINK or Realtek, and not an official Milestone publication. Product names are used for identification only and may be trademarks of their owners.</p>
+<p>Provided as is. These commands change network settings on both machines; read each one before running it. Scripts MIT, text CC BY 4.0.</p>
+</footer>
+
+<script>
+const $=s=>document.querySelector(s), el=(t,p={},...k)=>{const e=document.createElement(t);for(const a in p){if(a==='text')e.textContent=p[a];else if(a==='html')e.innerHTML=p[a];else e.setAttribute(a,p[a])}k.forEach(c=>e.append(c));return e};
+const store={get(k,d){try{const v=localStorage.getItem('shl.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('shl.'+k,JSON.stringify(v))}catch(e){}},clear(){try{Object.keys(localStorage).filter(k=>k.startsWith('shl.')).forEach(k=>localStorage.removeItem(k))}catch(e){}}};
+
+const FIELDS=[
+ ['spark','Spark direct-link address','10.10.10.2'],['halo','Halo direct-link address','10.10.10.1'],['port','RPC port','50052'],
+ ['model','Model file','<model.gguf>'],['conn','Spark: current LAN connection name','<current connection>'],['usb','Spark: USB gigabit adapter name','<usb-adapter>'],
+ ['tengbe','Spark: built-in 10GbE port name','<10gbe-port>'],['lanip','Spark: LAN address/prefix','<lan-ip>/<prefix>'],['gw','LAN gateway','<gateway>'],['dns','LAN DNS','<dns>'],['adapter','Halo: new adapter name','<new adapter name>']];
+let vals=store.get('vals',{}), checks=store.get('checks',{});
+const V=k=>(vals[k]&&vals[k].trim())||FIELDS.find(f=>f[0]===k)[2];
+const fill=s=>s.replace(/\{(\w+)\}/g,(m,k)=>FIELDS.some(f=>f[0]===k)?V(k):m);
+
+function cmdBlock(text){
+ const pre=el('pre',{text:fill(text)}), b=el('button',{type:'button',text:'Copy'});
+ b.addEventListener('click',()=>{const t=pre.textContent;const ok=()=>{b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1500)};
+  const fb=()=>{const r=document.createRange();r.selectNodeContents(pre);const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected';setTimeout(()=>b.textContent='Copy',1500)};
+  try{navigator.clipboard.writeText(t).then(ok,fb)}catch(e){fb()}});
+ return el('div',{class:'cmd'},pre,b);
+}
+
+const STEPS=[
+{t:'Spark network',w:'Spark',intro:"The Spark's built-in 10GbE port becomes the direct link, so its LAN address moves to a USB gigabit adapter first. Do this in order, or you can lock yourself out of SSH. Keep a monitor and keyboard within reach.",items:[
+ {t:'Plug in the USB gigabit adapter and confirm the driver and speed.',c:'lsusb -t | grep -i -B2 r8152\nip -br link',x:'Expect Driver=r8152 at 5000M. 480M means a USB 2 path: try another port or cable.'},
+ {t:'Cable the adapter to the same network, then look at how the current address is assigned. Copy the prefix, gateway and DNS from what the box reports; do not guess them.',c:'nmcli device status\nnmcli -f ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns con show "{conn}"',x:'ipv4.method of auto means the router hands the address out by DHCP.'},
+ {t:'Create a static profile on the adapter with auto-connect off, so it cannot clash yet.',c:'sudo nmcli con add type ethernet ifname {usb} con-name lan-usb ipv4.method manual ipv4.addresses {lanip} ipv4.gateway {gw} ipv4.dns {dns} connection.autoconnect no'},
+ {t:'Swap in one detached command. It pings the gateway over the new adapter and puts the old profile back if that fails.',c:'sudo sh -c \'nohup sh -c "nmcli con down \\"{conn}\\"; nmcli con up lan-usb; sleep 5; ping -c 3 -I {usb} {gw} || { nmcli con down lan-usb; nmcli con up \\"{conn}\\"; }" >/tmp/nicswap.log 2>&1 &\'',x:'The SSH session freezes for a few seconds, then carries on. Check /tmp/nicswap.log if it does not.'},
+ {t:'Reconnect over SSH, then make it permanent.',c:'sudo nmcli con mod lan-usb connection.autoconnect yes connection.autoconnect-priority 10\nsudo nmcli con mod "{conn}" connection.autoconnect no'},
+ {t:'Give the built-in 10GbE port its point-to-point address. No gateway, so it never competes with the LAN route.',c:'sudo nmcli con add type ethernet ifname {tengbe} con-name halo-direct ipv4.method manual ipv4.addresses {spark}/30 ipv4.never-default yes ipv6.method disabled connection.autoconnect yes'},
+ {t:'Tidy up: unplug the LAN cable from the built-in port, reserve or exclude the LAN address on the router, and reboot once while you are near the machine.'}]},
+{t:'Halo network',w:'Halo',intro:'The Halo keeps its built-in port on the LAN and gets the USB 10GbE adapter for the direct link. Run everything in an elevated PowerShell. The repo script Set-HaloDirect.ps1 does the rename, address and firewall rule in one run.',items:[
+ {t:'Plug the adapter into a USB4 port and check that Windows bound a Realtek driver (Device Manager shows the device as OK).'},
+ {t:'Connect the cable to the Spark before setting the address. Windows will not switch an adapter from DHCP to static while it has no link.'},
+ {t:'Rename the adapter and set the address. No gateway and no DNS.',c:'Rename-NetAdapter -Name "{adapter}" -NewName HaloDirect\nnetsh interface ipv4 set address name=HaloDirect source=static address={halo} mask=255.255.255.252 store=persistent\nnetsh interface ipv4 set dnsservers name=HaloDirect source=static address=none register=none validate=no\nDisable-NetAdapterBinding -Name HaloDirect -ComponentID ms_tcpip6'},
+ {t:'Allow the Spark in. The direct link lands in the Public firewall profile, which blocks ping and iperf3 by default.',c:'New-NetFirewallRule -DisplayName "HaloDirect - allow Spark" -Direction Inbound -Action Allow -RemoteAddress {spark} -Profile Any',x:'If Windows later shows an "allow access" dialog for a llama.cpp program, leave it unanswered. This rule already admits the Spark.'},
+ {t:'Stop Windows from sleeping the box or the adapter.',c:'powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c\npowercfg /change standby-timeout-ac 0\npowercfg /setacvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0\npowercfg /setactive SCHEME_CURRENT'},
+ {t:'Confirm.',c:'Get-NetAdapter HaloDirect | Format-Table Name,Status,LinkSpeed\nping {spark}',x:'Expect Up, 10 Gbps and replies.'}]},
+{t:'Verify the link',w:'Both',intro:'Measure real throughput before changing any setting, so you have a baseline.',items:[
+ {t:'Install iperf3 on both ends.',c:'# Halo\nwinget install --id ar51an.iPerf3 -e\n# Spark\nsudo apt-get install -y iperf3'},
+ {t:'Start the server on the Spark, bound to the direct link.',c:'iperf3 -s -B {spark}'},
+ {t:'Run four tests from the Halo.',c:'iperf3 -c {spark} -B {halo} -t 10\niperf3 -c {spark} -B {halo} -t 10 -P 4\niperf3 -c {spark} -B {halo} -t 10 -R\niperf3 -c {spark} -B {halo} -t 10 -R -P 4',x:'Measured here: 7.93 and 7.83 Gb/s Halo to Spark, 7.70 and 7.73 Gb/s Spark to Halo. About 7.8 Gb/s is the ceiling of the USB side; try the other USB4 port if you see far less.'}]},
+{t:'Matching builds',w:'Both',intro:'llama.cpp makes no promise of RPC compatibility between commits, so build both ends from the same commit. This setup used build 12477, commit 054a1babf.',items:[
+ {t:'On the Halo, check what the prebuilt Windows Vulkan build reports. It should already contain ggml-rpc-server.exe and llama-bench.exe.',c:'llama-server.exe --version'},
+ {t:'On the Spark, build the same tag with CUDA and RPC in its own folder.',c:'cd ~/llama.cpp\ngit fetch --tags origin\ngit worktree add --detach ~/llama.cpp-b12477 refs/tags/b12477\ncd ~/llama.cpp-b12477\ncmake -B build-rpc -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DGGML_RPC=ON -DCMAKE_CUDA_ARCHITECTURES=121 -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DLLAMA_CURL=OFF\ncmake --build build-rpc --config Release -j 12',x:'Under ten minutes on 12 cores.'},
+ {t:'Confirm both ends report the same build and commit.',c:'cd ~/llama.cpp-b12477/build-rpc/bin\nLD_LIBRARY_PATH=. ./llama-server --version'}]},
+{t:'Start and benchmark',w:'Both',intro:'The model file stays on the Halo; the worker needs no copy.',items:[
+ {t:'Start the RPC worker on the Spark, bound to the direct-link address only. -c caches received weights so later loads are faster.',c:'cd ~/llama.cpp-b12477/build-rpc/bin\nLD_LIBRARY_PATH=. ./ggml-rpc-server --host {spark} --port {port} -c'},
+ {t:'On the Halo, confirm the head sees both devices.',c:'llama-bench.exe --rpc {spark}:{port} --list-devices',x:'Expect a Vulkan0 line for the Radeon and an RPC0 line for the Spark.'},
+ {t:'Run the same benchmark three ways. On the Windows head, always add -lm none (--load-mode none on llama-server), or the default memory-mapped load can leave the Halo with almost no free RAM.',c:'# A. Halo only\nllama-bench.exe -m {model} -ngl 99 -p 512,2048 -n 128 -r 2 -lm none\n# B. Split across both\nllama-bench.exe -m {model} --rpc {spark}:{port} -ngl 99 -p 512,2048 -n 128 -r 2 -lm none\n# C. Everything on the Spark\nllama-bench.exe -m {model} --rpc {spark}:{port} --device RPC0 -ngl 99 -p 512,2048 -n 128 -r 2 -lm none'},
+ {t:'Compare with the Results tab, then use "Pick a layout" to choose how to run day to day.'}]}];
+let cur=store.get('step',0);
+function renderFields(){const f=$('#fields');f.textContent='';FIELDS.forEach(([k,l,d])=>{const i=el('input',{id:'f-'+k,placeholder:d,autocomplete:'off',spellcheck:'false'});i.value=vals[k]||'';i.addEventListener('input',()=>{vals[k]=i.value;store.set('vals',vals);renderStep();renderLayout();$('#t-halo').textContent=V('halo');$('#t-spark').textContent=V('spark')});f.append(el('label',{class:'f',for:'f-'+k},l,i))});$('#t-halo').textContent=V('halo');$('#t-spark').textContent=V('spark')}
+function renderStep(){
+ const total=STEPS.reduce((n,s)=>n+s.items.length,0), done=Object.values(checks).filter(Boolean).length;
+ $('#prog').value=total?done/total:0;$('#prog-t').textContent=done+' of '+total+' done';
+ const nav=$('#stepnav');nav.textContent='';
+ STEPS.forEach((s,i)=>{const d=s.items.filter((_,j)=>checks[i+'.'+j]).length;const b=el('button',{type:'button','aria-pressed':String(i===cur),text:(i+1)+'. '+s.t+' ('+d+'/'+s.items.length+')'});b.addEventListener('click',()=>{cur=i;store.set('step',cur);renderStep()});nav.append(b)});
+ const s=STEPS[cur], box=$('#step');box.textContent='';
+ box.append(el('h3',{},el('span',{class:'where',text:s.w.toUpperCase()}),'Step '+(cur+1)+': '+s.t),el('p',{text:s.intro}));
+ const ol=el('ol',{class:'items'});
+ s.items.forEach((it,j)=>{const id=cur+'.'+j,cb=el('input',{type:'checkbox',id:'c'+id});cb.checked=!!checks[id];const li=el('li',{class:cb.checked?'done':''},el('label',{class:'chk',for:'c'+id},cb,el('span',{text:(j+1)+'. '+it.t})));
+  cb.addEventListener('change',()=>{checks[id]=cb.checked;store.set('checks',checks);renderStep()});
+  if(it.c){const c=cmdBlock(it.c);c.classList.add('indent');li.append(c)}
+  if(it.x)li.append(el('p',{class:'expect',text:it.x}));ol.append(li)});
+ box.append(ol);$('#prev').disabled=cur===0;$('#next').disabled=cur===STEPS.length-1;
+}
+$('#prev').addEventListener('click',()=>{if(cur>0){cur--;store.set('step',cur);renderStep()}});
+$('#next').addEventListener('click',()=>{if(cur<STEPS.length-1){cur++;store.set('step',cur);renderStep()}});
+$('#reset').addEventListener('click',()=>{vals={};checks={};cur=0;store.clear();renderFields();renderStep();renderLayout()});
+
+/* layouts */
+const WORKER='# Spark\ncd ~/llama.cpp-b12477/build-rpc/bin\nLD_LIBRARY_PATH=. ./ggml-rpc-server --host {spark} --port {port} -c';
+const LAY=[
+{id:'sparkserver',n:'Server on the Spark',s:'Fastest for a model that fits on the Spark',k:[['61.7','tok/s generation (benchmark)'],['59 / 45 / 39','tok/s per request at 1 / 2 / 4 concurrent'],['150','tok/s aggregate at 4']],
+ d:'Only HTTP crosses the cable, so the builds need not match. The model file lives on the Spark.',c:'# Spark\ncd ~/llama.cpp-b12477/build-rpc/bin\nLD_LIBRARY_PATH=. ./llama-server -m {model} -ngl 99 --host {spark} --port 8097 --ctx-size 32768 -np 4 --flash-attn on --api-key-file <key file>\n# Halo: call http://{spark}:8097/v1/chat/completions with the key as a bearer token',
+ w:'Keep it bound to the direct-link address. /health answers without a key. The Halo needs its own fallback for when the cable is unplugged.'},
+{id:'rpcspark',n:'RPC, all on the Spark',s:'Model file stays on the Halo, Spark does the work',k:[['51.1','tok/s generation (benchmark)'],['1,922 / 2,111','tok/s on 512 / 2,048-token prompts'],['51 / 36 / 30','tok/s per request at 1 / 2 / 4']],
+ d:'Prompts run 14 to 29% faster than the Halo alone; generation is 7% slower. Against the Spark\'s own server, RPC gives up 13 to 23%.',c:WORKER+'\n# Halo\nllama-server.exe -m {model} -ngl 99 --rpc {spark}:{port} --device RPC0 --host 127.0.0.1 --port 8098 --ctx-size 32768 -np 4 --flash-attn on --load-mode none',
+ w:'Always use --load-mode none on the Windows head. If the cable drops, the head exits: see the cable-pull drill.'},
+{id:'split',n:'RPC, split across both',s:'For models too big for one machine',k:[['48.7','tok/s generation, 35B'],['14.06','tok/s generation, 153 GiB model'],['2,582','tok/s on a 2,048-token prompt, 35B']],
+ d:'llama.cpp chooses the split. For a model that fits on one box, splitting costs 12% on generation, so use it only when the model needs both machines\' memory.',c:WORKER+'\n# Halo\nllama-server.exe -m {model} -ngl 99 --rpc {spark}:{port} --host 127.0.0.1 --port 8098 --ctx-size 32768 -np 4 --flash-attn on --load-mode none',
+ w:'For a very large model, stop every other model on both machines first and do not start them again until the run has ended. Other servers started on the Spark during the 153 GiB run pushed it out of memory and the run was lost.'},
+{id:'halo',n:'Halo only',s:'The fallback when the cable is unplugged',k:[['55.2','tok/s generation (benchmark)'],['1,689 / 1,635','tok/s on 512 / 2,048-token prompts'],['52.7','tok/s as a server']],
+ d:'No Spark needed. A larger micro-batch (-ub 2048) made long prompts 24% faster here.',c:'# Halo\nllama-bench.exe -m {model} -ngl 99 -p 512,2048 -n 128 -r 2',w:'Vulkan beat ROCm on Windows for this model.'},
+{id:'reverse',n:'Reverse: Spark as head',s:'Tested, not recommended',k:[['40.0','tok/s, everything on the Halo'],['45.2','tok/s, split'],['27%','RPC cost on generation']],
+ d:'The slower way round: 7% slower generating and 21% slower on long prompts than the forward split.',c:'# Halo\nggml-rpc-server.exe --host {halo} --port {port} -c\n# Spark\n./llama-bench -m {model} --rpc {halo}:{port} -ngl 99 -p 512,2048 -n 128 -r 2',
+ w:'A Halo worker started with -c writes its cache to %LOCALAPPDATA%\\llama.cpp\\rpc unless LLAMA_CACHE is set.'}];
+let lay=store.get('lay','sparkserver');
+function renderLayout(){
+ const c=$('#lay-cards');c.textContent='';
+ LAY.forEach(l=>{const b=el('button',{type:'button','aria-pressed':String(l.id===lay)},el('strong',{text:l.n}),el('small',{text:l.s}));b.addEventListener('click',()=>{lay=l.id;store.set('lay',lay);renderLayout()});c.append(b)});
+ const l=LAY.find(x=>x.id===lay)||LAY[0],box=$('#lay');box.textContent='';
+ const kv=el('div',{class:'kv'});l.k.forEach(([b,s])=>kv.append(el('div',{},el('b',{text:b}),el('span',{text:s}))));
+ box.append(el('h3',{text:l.n}),el('p',{text:l.d}),kv,cmdBlock(l.c),el('div',{class:'note',text:l.w}));
+}
+function renderSize(){
+ const g=+$('#size').value;$('#size-o').textContent=g+' GiB';
+ const caps=[['Halo GPU memory, nothing else loaded',106],['Spark memory, nothing else loaded',118],['Both together',224]],cap=$('#cap');cap.textContent='';
+ caps.forEach(([n,c])=>{const fits=g<=c;cap.append(el('span',{text:n}),el('span',{class:'t'},el('i',{class:fits?'':'alt',style:'width:'+Math.min(100,g/c*100)+'%'})),el('span',{class:'v',text:(fits?'fits: ':'too big: ')+g+' of '+c}))});
+ let r,id;
+ if(g<=106){r='Fits on either machine. Run the server on the Spark for the best speed, and keep the Halo-only setup as the fallback.';id='sparkserver'}
+ else if(g<=118){r='Too big for the Halo\'s GPU memory but may fit on the Spark alone if nothing else is loaded there. Try the server on the Spark; otherwise split it.';id='sparkserver'}
+ else if(g<=224){r='Too big for either machine: split it across both with RPC. A 153 GiB model ran this way at 14 tok/s.';id='split'}
+ else{r='Larger than both machines\' memory combined. Not expected to load; nothing this large was tested.';id=null}
+ const box=$('#rec');box.textContent=r+' ';
+ if(id){const b=el('button',{type:'button',text:'Show that layout'});b.addEventListener('click',()=>{lay=id;store.set('lay',lay);renderLayout();$('#lay').scrollIntoView({behavior:'smooth',block:'nearest'})});box.append(b)}
+}
+$('#size').addEventListener('input',renderSize);
+
+/* results */
+function bars(target,rows,max,unit){const t=$(target);t.textContent='';rows.forEach(r=>{if(r.g){t.append(el('span',{class:'g',text:r.g}));return}t.append(el('span',{text:r[0]}),el('span',{class:'t'},el('i',{class:r[2]?'alt':'',style:'width:'+(r[1]/max*100)+'%'})),el('span',{class:'v',text:(unit==='tok/s'&&r[1]<100?r[1].toFixed(1):r[1].toLocaleString('en-US'))+' '+unit}))})}
+const LOAD={'Spark server':[[59.2,58.1,144],[44.9,87.4,256],[38.6,150.0,352]],'RPC, all on the Spark':[[51.3,49.8,244],[36.2,69.9,420],[30.1,115.8,519]],'RPC, split':[[47.9,46.9,204],[36.2,70.3,361],[28.0,107.8,546]]};
+const METRICS=[['Per request','tok/s','Speed each client sees. Higher is better.'],['Aggregate','tok/s','Total across all clients. Higher is better.'],['Time to first token','ms','Median. Lower is better.']];
+let mi=0;
+function renderLoad(){const b=$('#m-btns');b.textContent='';METRICS.forEach((m,i)=>{const x=el('button',{type:'button','aria-pressed':String(i===mi),text:m[0]});x.addEventListener('click',()=>{mi=i;renderLoad()});b.append(x)});
+ const rows=[];let max=0;for(const k in LOAD){rows.push({g:k});LOAD[k].forEach((r,i)=>{rows.push([[1,2,4][i]+' concurrent',r[mi]]);max=Math.max(max,r[mi])})}
+ bars('#load',rows,max,METRICS[mi][1]);$('#load-n').textContent=METRICS[mi][2]+' RPC delivered 13% less than the Spark\'s own server at one request and 23% less aggregate at four.'}
+const BENCH=[['Halo only, Vulkan',1689,1635,55.2],['Spark only, over RPC',1922,2111,51.1],['Split, Vulkan + RPC',1728,2582,48.7],['Spark native, no RPC',2250,2259,61.7]];
+const BM=['Prompt, 512 tokens','Prompt, 2,048 tokens','Generation'];let bi=2;
+function renderBench(){const b=$('#b-btns');b.textContent='';BM.forEach((m,i)=>{const x=el('button',{type:'button','aria-pressed':String(i===bi),text:m});x.addEventListener('click',()=>{bi=i;renderBench()});b.append(x)});
+ bars('#bench',BENCH.map(r=>[r[0],r[bi+1]]),Math.max(...BENCH.map(r=>r[bi+1])),'tok/s')}
+
+/* drill */
+const DR=[
+ {b:'Pull the cable',h:['Exited','s-bad'],w:['Stuck','s-warn'],log:['0 s','Cable pulled during generation.'],log2:['+2.5 s','The head on the Halo exits. The worker on the Spark does not notice and stays stuck.']},
+ {b:'Reconnect the cable',h:['Exited','s-bad'],w:['Stuck','s-warn'],log:['later','Link is back up. Nothing restarts by itself, and a new head cannot use the stuck worker.']},
+ {b:'Restart the worker',h:['Exited','s-bad'],w:['Listening','s-ok'],log:['seconds','Stop the old ggml-rpc-server on the Spark and start it again.']},
+ {b:'Restart the head',h:['Serving','s-ok'],w:['Listening','s-ok'],log:['+69 s','The head reloads the model (worker cache warm) and serves again. 92 s in all from the worker restart.']}];
+let di=-1;
+function renderDrill(){const b=$('#drill-btns');b.textContent='';
+ DR.forEach((d,i)=>{const x=el('button',{type:'button',class:i===di+1?'pri':'',text:(i+1)+'. '+d.b});x.disabled=i!==di+1;x.addEventListener('click',()=>{di=i;renderDrill()});b.append(x)});
+ const r=el('button',{type:'button',text:'Start over'});r.addEventListener('click',()=>{di=-1;renderDrill()});b.append(r);
+ const st=di<0?{h:['Serving','s-ok'],w:['Listening','s-ok']}:DR[di];
+ const h=$('#d-head'),w=$('#d-work');h.textContent=st.h[0];h.className='state '+st.h[1];w.textContent=st.w[0];w.className='state '+st.w[1];
+ const log=$('#d-log');log.textContent='';for(let i=0;i<=di;i++){[DR[i].log,DR[i].log2].filter(Boolean).forEach(l=>log.append(el('div',{},el('time',{text:l[0]}),el('span',{text:l[1]}))))}
+ if(di<0)log.append(el('div',{},el('time',{text:'before'}),el('span',{text:'Model running through RPC, both ends healthy.'})))}
+
+/* gotchas */
+const G=[
+['New-NetIPAddress fails with "Inconsistent parameters PolicyStore PersistentStore and Dhcp Enabled"','The adapter has no link, and Windows will not leave DHCP on a disconnected adapter.','Connect the cable first, then set the address with netsh.'],
+['The vendor\'s driver installer does nothing','Windows had already bound the same Realtek driver version.','Check Device Manager before installing.'],
+['A Thunderbolt or USB4 10GbE adapter is not expected to work on the Spark (from the port spec, not tested)','The Spark\'s USB-C ports are USB 3.2 Gen 2x2, not USB4 or Thunderbolt.','Put the fast adapter on the Halo and use the Spark\'s built-in 10GbE port.'],
+['Ping and iperf3 from the Spark to the Halo time out','The direct link is in the Windows Public firewall profile.','Add an inbound allow rule scoped to the Spark\'s direct-link address.'],
+['The adapter reports 10 Gbps but iperf3 shows less','10 Gbps is the Ethernet rate; the USB side is the ceiling.','Expect about 7.8 Gb/s. Try the other USB4 port if you see far less.'],
+['SSH session lost while moving the Spark\'s LAN address','The address moved before the new path was proven.','Use the detached swap with automatic rollback in step 1.'],
+['rpc-server not found after building','The binary was renamed.','Run ggml-rpc-server.'],
+['The Halo sleeps and the API disappears','Windows default sleep timer on AC power.','Disable sleep and USB selective suspend, step 2.'],
+['The Halo\'s free RAM falls to almost zero while loading a model that runs entirely on the Spark','The default memory-mapped load keeps the file in the head\'s working set on Windows (about 24 GiB here).','Start the head with --load-mode none (-lm none for llama-bench).'],
+['error: invalid argument: --no-mmap','Recent builds replaced it with --load-mode.','Use --load-mode none.'],
+['A Windows Firewall "allow access" dialog appears when the worker or head first listens','The Public profile has notify-on-listen on, and no rule names the program.','Leave it unanswered; the address-scoped rule already admits the Spark. Clicking Allow adds program rules for any address; remove them afterwards.'],
+['CMake fails over SSH with "No CMAKE_CUDA_COMPILER could be found"','nvcc is not on the PATH in a non-interactive SSH session.','Pass -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc.'],
+['A Halo worker started with -c writes about 34 GB to %LOCALAPPDATA%\\llama.cpp\\rpc','That is the default cache location.','Set LLAMA_CACHE to a folder of your choice first.'],
+['RPC generation is 5 to 7% slower when the Halo is otherwise idle','Most likely CPU idle states adding latency to each per-token round trip (not proven).','Expect it; keep other Halo CPU load the same when comparing runs.'],
+['After the cable is pulled and reconnected, nothing works','The head exits about 2.5 s after the pull and the worker stays stuck.','Restart the worker, then the head. Allow about 1.5 minutes.'],
+['The Spark runs out of memory during a very large split run','Other model servers were started on the Spark while a 153 GiB model was loaded.','Stop other models first and leave them stopped until the run ends.'],
+['llama-server or llama-bench segfaults on load with --rpc (reported by other guides, not seen here)','Unknown here.','Try -fit off first.']];
+function renderG(){const q=$('#gq').value.trim().toLowerCase(),box=$('#g-list');box.textContent='';const hit=G.filter(g=>!q||g.join(' ').toLowerCase().includes(q));
+ $('#g-n').textContent=hit.length+' of '+G.length+' shown';
+ hit.forEach(g=>box.append(el('div',{class:'panel',style:'margin:8px 0'},el('h3',{text:g[0]}),el('p',{},el('strong',{text:'Cause: '}),g[1]),el('p',{style:'margin:0'},el('strong',{text:'Fix: '}),g[2]))))}
+$('#gq').addEventListener('input',renderG);
+
+/* tabs */
+const VIEWS=['setup','choose','results','linkloss','gotchas'];
+function show(){const h=location.hash.slice(1),v=VIEWS.includes(h)?h:'setup';
+ VIEWS.forEach(x=>$('#v-'+x).classList.toggle('on',x===v));
+ document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.v===v)))}
+document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>{location.hash=b.dataset.v;show();window.scrollTo(0,0)}));
+addEventListener('hashchange',show);
+
+renderFields();renderStep();renderLayout();renderSize();renderLoad();renderBench();
+bars('#jumbo',[['MTU 1500',49.4],['MTU 9000',52.3],['MTU 1500, re-run',50.2]],52.3,'tok/s');
+renderDrill();renderG();show();
+</script>
+</body>
+</html>
